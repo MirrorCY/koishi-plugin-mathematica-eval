@@ -4,6 +4,7 @@ import pyautogui
 import pyperclip
 import time
 import shutil
+import fitz
 
 
 class MathematicaEvaluator:
@@ -11,6 +12,7 @@ class MathematicaEvaluator:
         # pyautogui.FAILSAFE = False
         self.temp_dir = temp_dir
         self._initialize_temp_dir()
+        os.system('"C:\\Program Files\\Wolfram Research\\Mathematica\\13.3\\Mathematica.exe"')
 
     def _initialize_temp_dir(self):
         if os.path.exists(self.temp_dir):
@@ -33,7 +35,7 @@ class MathematicaEvaluator:
     def evaluate(self, code, timeout=10, step=False):
         # 初始化临时目录
         self._initialize_temp_dir()
-        temp_file = "temp.html"
+        temp_file = "temp.pdf"
         temp_nb = os.path.join(self.temp_dir, "temp.nb")
         with open(temp_nb, "w") as f:
             f.write("Notebook[{}]")
@@ -63,34 +65,28 @@ class MathematicaEvaluator:
             # 等待直到 hide 出现
             self._locate("hide.png", 10, confidence=0.6)
 
-        # 按下 ctrl+shift+s，准备导出 html
+        # 按下 ctrl+shift+s，准备导出 pdf
         pyautogui.hotkey("ctrl", "shift", "s")
 
         # 输入文件名
         self._input(temp_file)
 
-        # 等待 1 秒
-        time.sleep(1)
-
         # 鼠标移走（规避弹出的保存窗口）
         pyautogui.moveTo(100, 0)
 
-        # 按下 tab 键，按 11 下 下箭头，每次间隔 0.1 秒（选择 HTML 方式保存）
+        # 按下 tab 键，按 9 下 下箭头 (PDF 导出)
         pyautogui.press("tab")
-        pyautogui.press("down", presses=11)
+        pyautogui.press("down", presses=9)
 
         # 按下两回车键
         pyautogui.press("enter", presses=2, interval=0.1)
-        time.sleep(1)
 
         # 等待文件大小不为 0（完成 html 导出），10 秒超时
-        temp_html_path = os.path.join(self.temp_dir, temp_file)
+        temp_pdf_path = os.path.join(self.temp_dir, temp_file)
         start_time = time.time()
-        while (
-            not os.path.exists(temp_html_path) or os.path.getsize(temp_html_path) == 0
-        ):
+        while not os.path.exists(temp_pdf_path) or os.path.getsize(temp_pdf_path) == 0:
             temp_time = time.time() - start_time
-            if temp_time > 30:
+            if temp_time > 5:
                 return None
             time.sleep(0.1)
 
@@ -102,32 +98,31 @@ class MathematicaEvaluator:
         pyautogui.hotkey("alt", "f4")
         # time.sleep(1)
 
-        # 返回 HTML 下的 temp_1.gif 文件
-        gif_file = os.path.join(self.temp_dir, "HTMLFiles/temp_1.gif")
-        if os.path.exists(gif_file):
-            return copy_gif(gif_file)
+        if os.path.exists(temp_pdf_path):
+            return pdf2pngs(temp_pdf_path)
         else:
             return None
 
 
-# 复制 gif 文件到上传目录
-def copy_gif(gif_file, upload_dir="./upload/"):
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-    gif_name = str(time.time()) + ".gif"
-    gif_path = os.path.join(upload_dir, gif_name)
-    shutil.copy(gif_file, gif_path)
-    return gif_path
+def pdf2pngs(pdf_file: str) -> list[str]:
+    dir = os.path.dirname(pdf_file)
+    doc = fitz.open(pdf_file)
+    pngs = []
+    for page in doc:
+        pix = page.get_pixmap(dpi=300)
+        png_path = f'{dir}/page-{page.number}.png'
+        pix.save(png_path)
+        pngs.append(png_path)
+    return pngs
 
 
 if __name__ == "__main__":
     evaluator = MathematicaEvaluator()
 
-    gif = evaluator.evaluate("pi")
-    if gif:
-        subprocess.run(["start", gif], shell=True)
-        time.sleep(5)
+    pngs = evaluator.evaluate("1+1")
+    subprocess.run(["start", pngs[0]], shell=True)
 
-    gif = evaluator.evaluate("1+1")
-    if gif:
-        subprocess.run(["start", gif], shell=True)
+    time.sleep(5)
+
+    pngs = evaluator.evaluate("pi")
+    subprocess.run(["start", pngs[0]], shell=True)

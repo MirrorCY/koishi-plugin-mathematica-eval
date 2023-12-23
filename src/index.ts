@@ -5,11 +5,17 @@ export const name = 'mathematica-eval'
 export interface Config {
   token: string
   host: string
+  timeout: number
+}
+
+interface Response {
+  pngs: string[]
 }
 
 export const Config: Schema<Config> = Schema.object({
   token: Schema.string().description('42 的狐务器 token，在 [这里](https://forum.koishi.xyz/t/topic/6278) 获取'),
   host: Schema.string().description('狐务器地址').default('http://106.55.149.60:4245/evaluate/'),
+  timeout: Schema.number().description('等待服务器响应的时间').default(600000),
 })
 
 export function apply(ctx: Context, config: Config) {
@@ -26,7 +32,14 @@ export function apply(ctx: Context, config: Config) {
         timeout: options.timeout,
         step: options.step ? true : false,
       }
-      const gif: ArrayBuffer = await ctx.http.post(config.host, data, { headers: { Authorization: config.token }, responseType: 'arraybuffer', timeout: 600000 })
-      return h.image(gif, 'gif')
+      const res: Response = await ctx.http.post(config.host, data, { headers: { Authorization: config.token }, timeout: config.timeout })
+      const message = h('message')
+      if (res.pngs.length > 0) {
+        for (const png of res.pngs) {
+          message.children.push(h.image(png))
+        }
+        return message
+      }
+      else return '执行失败'
     })
 }
